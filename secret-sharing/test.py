@@ -1,12 +1,13 @@
 import pytest
+from sympy.functions.combinatorial.numbers import I
 from crypto import CryptoEnv
 from schemes import additive, rss, shamir
 from itertools import combinations
 
 Q = 13
-secret = 11
-n = 5
-k = 3
+secret = 0
+n = 11
+k = 7
 
 @pytest.mark.parametrize(
     "scheme, split, recon",
@@ -31,5 +32,6 @@ def test_k_of_n_secret_recovery(scheme, split, recon):
             recovered = recon({i: shares[i] for i in subset}, env)
             assert recovered == secret
     elif scheme is shamir:
-        recovered = recon(shares[:k], env)
-        assert recovered == secret
+        for subset in subsets:
+            recovered = recon({i: shares[i] for i in subset}, env)
+            assert recovered == secret
