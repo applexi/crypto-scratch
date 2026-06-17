@@ -2,7 +2,7 @@ from crypto import CryptoEnv
 from sympy import isprime
 
 
-def eval_poly(coeffs : list, val : int, env: CryptoEnv) -> int:
+def eval_poly(coeffs: list, val: int, env: CryptoEnv) -> int:
     val = val % env.q
     d = len(coeffs) - 1
     p = coeffs[d]
@@ -10,7 +10,7 @@ def eval_poly(coeffs : list, val : int, env: CryptoEnv) -> int:
         p = (p * val + coeffs[i]) % env.q
     return p
 
-def lagrange_interp(val : int, points : list[tuple[int, int]], env : CryptoEnv) -> int:
+def lagrange_interp(val: int, points: list[tuple[int, int]], env : CryptoEnv) -> int:
     assert isprime(env.q)
     R = [0] * len(points)
     for i, (a_i, b_i) in enumerate(points):
