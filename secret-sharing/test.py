@@ -1,9 +1,12 @@
 import pytest
 from crypto import CryptoEnv
 from schemes import additive, rss, shamir
+from itertools import combinations
 
 Q = 13
 secret = 11
+n = 3
+k = 2
 
 @pytest.mark.parametrize(
     "scheme, split, recon",
@@ -14,36 +17,20 @@ secret = 11
     ],
     ids=["additive", "rss", "shamir"],
 )
-def test_2_of_3_secret_recovery(scheme, split, recon):
-    env = CryptoEnv(n=3, k=2, q=Q)
+def test_k_of_n_secret_recovery(scheme, split, recon):
+    env = CryptoEnv(n=n, k=k, q=Q)
     shares = split(secret, env)
+    subsets = combinations(range(1, env.n + 1), env.k)
 
     if scheme is additive:
+        # always assumes n-of-n regardless of k 
         recovered = recon(shares, env)
+        assert recovered == secret
     elif scheme is rss:
-        recovered = recon({1: shares[1], 2: shares[2]}, env)
-    else:
-        recovered = recon(shares[:2], env)
-
-    assert recovered == secret
-
-
-@pytest.mark.parametrize(
-    "scheme, split, recon",
-    [
-        (additive, additive.share, additive.reconstruct),
-        (rss, rss.share, rss.reconstruct),
-        (shamir, shamir.share, shamir.reconstruct),
-    ],
-    ids=["additive", "rss", "shamir"],
-)
-def test_3_of_3_secret_recovery(scheme, split, recon):
-    env = CryptoEnv(n=3, k=3, q=Q)
-    shares = split(secret, env)
-
-    if scheme is rss:
-        recovered = recon({1: shares[1], 2: shares[2], 3: shares[3]}, env)
-    else:
-        recovered = recon(shares, env)
-
-    assert recovered == secret
+        for subset in subsets:
+            recovered = recon({i: shares[i] for i in subset}, env)
+            assert recovered == secret
+    elif scheme is shamir:
+        for subset in subsets:
+            recovered = recon([shares[i - 1] for i in subset], env)
+            assert recovered == secret
