@@ -57,20 +57,20 @@ class rss:
 
 class shamir:
     @staticmethod
-    def share(s : int, env: CryptoEnv) -> list[int]:
+    def share(s : int, env: CryptoEnv) -> dict[int, int]:
         assert 0 <= s < env.q
         assert 1 <= env.k <= env.n
         assert env.q > env.n
         a = [secrets.randbelow(env.q) for _ in range(env.k - 1)]
         a[-1] = secrets.randbelow(env.q - 1) + 1
         a[0] = s
-        shares = [eval_poly(a, i, env) for i in range(1, env.n + 1)]
+        shares = {i: eval_poly(a, i, env) for i in range(1, env.n + 1)}
         return shares
     
     @staticmethod
-    def reconstruct(shares: list[int], env: CryptoEnv) -> int:
+    def reconstruct(shares: dict[int, int], env: CryptoEnv) -> int:
         assert isprime(env.q)
         assert len(shares) >= env.k
-        points = [(i + 1, share) for i, share in enumerate(shares)]
+        points = list(shares.items())
         s_prime = lagrange_interp(0, points, env)
         return s_prime
