@@ -32,6 +32,7 @@ def test_k_of_n_secret_recovery(scheme, split, recon):
             recovered = recon({i: shares[i] for i in subset}, env)
             assert recovered == secret
     elif scheme is shamir:
+        scheme = shamir(env)
         for subset in subsets:
-            recovered = recon({i: shares[i] for i in subset}, env)
+            recovered = scheme.reconstruct({i: shares[i] for i in subset}, env)
             assert recovered == secret
