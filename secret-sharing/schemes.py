@@ -65,7 +65,7 @@ class shamir:
     @staticmethod
     def share(s : int, env: CryptoEnv) -> dict[int, int]:
         """
-        - Pre-reqs:
+        Pre-reqs:
         - q > n for n distinct points for langrange interp
         """
         assert 0 <= s < env.q
