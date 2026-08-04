@@ -30,6 +30,9 @@ def lagrange_mults(env: CryptoEnv, a: list[int] = None, val: int = 0) -> dict[tu
                 mults[(a_i, a_j)] = (num * pow(den, -1, env.q)) % env.q
     return mults
 
+def lagrange_mults_n_of_n(env: CryptoEnv, a: list[int] = None, val: int = 0):
+    
+
 def lagrange_interp(mults : dict[tuple[int, int], int], points: list[tuple[int, int]], env : CryptoEnv) -> int:
     """
     Pre-reqs:
@@ -44,3 +47,5 @@ def lagrange_interp(mults : dict[tuple[int, int], int], points: list[tuple[int, 
                 mult_i = (mult_i * mults[(a_i, a_j)]) % env.q
         g_0 = (g_0 + b_i * mult_i) % env.q
     return g_0
+
+# homework: rewrite a more efficient version of lagrange_interp for n-of-n
