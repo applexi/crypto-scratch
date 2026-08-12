@@ -1,4 +1,3 @@
-
 use std::iter::zip;
 
 use crate::sharing::bitadder::{full, full_adder, parallel_prefix};
@@ -9,21 +8,19 @@ use rand::rngs::SysRng;
 const TIMES: usize = 20;
 
 #[test]
-fn sharing_correctness_test() -> Result<(), Error>{
+fn sharing_correctness_test() -> Result<(), Error> {
     let k = 3;
     let n = 5;
-    let arithmetic = ArithmeticSharing::new(k, n);
-    let binary = BinarySharing::new(k, n);
     let mut rng = SysRng;
 
-    let secret_arith = Arithmetic::random_share(&mut rng)
-        .expect("Could not generate random arithmetic share");
-    let arith_shares = arithmetic.share(&mut rng, secret_arith)?;
-    let secret_bit = Binary::random_share(&mut rng)
-        .expect("Could not generate random binary share");
-    let binary_shares = binary.share(&mut rng, secret_bit)?;
+    let secret_arith =
+        Arithmetic::random_share(&mut rng).expect("Could not generate random arithmetic share");
+    let arith_shares = ArithRepSharing::share(&mut rng, secret_arith, k, n)?;
+    let secret_bit =
+        Binary::random_share(&mut rng).expect("Could not generate random binary share");
+    let binary_shares = BitRepSharing::share(&mut rng, secret_bit, k, n)?;
 
-    let k_subsets: Vec<Vec<usize>>  = (1..n + 1).combinations(k).collect();
+    let k_subsets: Vec<Vec<usize>> = (1..n + 1).combinations(k).collect();
     for k_subset in k_subsets {
         let k_arith_shares: HashMap<usize, HashMap<Vec<usize>, ArithShare>> = arith_shares
             .iter()
@@ -33,8 +30,8 @@ fn sharing_correctness_test() -> Result<(), Error>{
             .iter()
             .filter_map(|(i, x)| k_subset.contains(i).then(|| (*i, x.clone())))
             .collect();
-        let r_secret_arith = arithmetic.reconstruct(&k_arith_shares);
-        let r_secret_binary = binary.reconstruct(&k_binary_shares);
+        let r_secret_arith = ArithRepSharing::reconstruct(&k_arith_shares, k, n);
+        let r_secret_binary = BitRepSharing::reconstruct(&k_binary_shares, k, n);
         assert!(secret_arith == r_secret_arith);
         assert!(secret_bit == r_secret_binary);
     }
@@ -45,22 +42,19 @@ fn sharing_correctness_test() -> Result<(), Error>{
 fn to_from_arith_binary_test() -> Result<(), Error> {
     let k = 2;
     let n = 3;
-    let arithmetic = ArithmeticSharing::new(k, n);
     let mut rng = SysRng;
 
-    let secret_arith = Arithmetic::random_share(&mut rng)
-        .expect("Could not generate random arithmetic share");
-    let arith_shares = arithmetic.share(&mut rng, secret_arith)?;
+    let secret_arith =
+        Arithmetic::random_share(&mut rng).expect("Could not generate random arithmetic share");
+    let arith_shares = ArithRepSharing::share(&mut rng, secret_arith, k, n)?;
 
     let bits_from_arith: HashMap<Vec<usize>, ArithShare> = arith_shares
         .values()
         .flat_map(|x| x.iter().map(|(k, v)| (k.clone(), *v)))
         .collect();
     let arith: Vec<ArithShare> = bits_from_arith.into_values().collect();
-    let bits_from_arith: Vec<Vec<BitShare>> = arith
-        .iter()
-        .map(|x| Arithmetic::to_binary(*x))
-        .collect();
+    let bits_from_arith: Vec<Vec<BitShare>> =
+        arith.iter().map(|x| Arithmetic::to_binary(*x)).collect();
     let bits_to_arith: Vec<ArithShare> = bits_from_arith
         .iter()
         .map(|x| Binary::to_arithmetic(x.to_vec()))
@@ -73,10 +67,8 @@ fn to_from_arith_binary_test() -> Result<(), Error> {
 fn bit_adder_test() -> Result<(), Error> {
     let mut rng = SysRng;
 
-    let a = Arithmetic::random_share(&mut rng)
-        .expect("Could not generate random arithmetic share");
-    let b = Arithmetic::random_share(&mut rng)
-        .expect("Could not generate random arithmetic share");
+    let a = Arithmetic::random_share(&mut rng).expect("Could not generate random arithmetic share");
+    let b = Arithmetic::random_share(&mut rng).expect("Could not generate random arithmetic share");
     let c_out = u32::from(a) + u32::from(b) > u32::from(u16::MAX);
     let c = Arithmetic::add(a, b);
 
@@ -110,4 +102,3 @@ fn loop_all_test() -> Result<(), Error> {
     }
     Ok(())
 }
-

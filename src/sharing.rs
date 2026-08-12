@@ -6,8 +6,10 @@ use rand::TryCryptoRng;
 mod arithmetic;
 mod binary;
 mod bitadder;
+mod helper;
 pub use arithmetic::{ArithShare, Arithmetic};
 pub use binary::{Binary, BitShare};
+pub use helper::n_choose_k;
 
 use crate::error::Error;
 
@@ -15,15 +17,12 @@ use crate::error::Error;
 mod test;
 
 pub type PartyID = usize;
-pub type ReplicatedShares<T: Sharing> = HashMap<Vec<PartyID>, T::Share>;
 
-pub type ArithmeticSharing = ReplicatedSharing<Arithmetic>;
-/// `HashMap<Vec<PartyID>, ArithShare>`
-pub type ArithmeticShares = ReplicatedShares<Arithmetic>;
+pub type ArithRepSharing = ReplicatedSharing<Arithmetic>;
+pub type BitRepSharing = ReplicatedSharing<Binary>;
 
-pub type BinarySharing = ReplicatedSharing<Binary>;
-/// `HashMap<Vec<PartyID>, BitShare>`
-pub type BinaryShares = ReplicatedShares<Binary>;
+pub type ArithAddSharing = AdditiveSharing<Arithmetic>;
+pub type BitAddSharing = AdditiveSharing<Binary>;
 
 pub trait Sharing {
     type Share: Copy + Debug;
@@ -42,29 +41,18 @@ pub trait Sharing {
 }
 
 pub struct ReplicatedSharing<T: Sharing> {
-    pub k: usize,
-    pub n: usize,
     _sharing: PhantomData<T>,
 }
 
 impl<T: Sharing> ReplicatedSharing<T> {
-    /// Panics if either `k` or `n` are negative, and if `k > n`
-    pub fn new(k: usize, n: usize) -> Self {
-        assert!(1 <= k && k <= n);
-        ReplicatedSharing {
-            k,
-            n,
-            _sharing: PhantomData,
-        }
-    }
-
-    /// Returns [`n`][`Self::n`] shares from a given secret
+    /// Returns `n` shares from a given secret
     pub fn share<R: TryCryptoRng>(
-        &self,
         rng: &mut R,
         secret: T::Share,
-    ) -> Result<HashMap<PartyID, ReplicatedShares<T>>, Error> {
-        let subsets: Vec<Vec<PartyID>> = (1..self.n + 1).combinations(self.k - 1).collect();
+        k: usize,
+        n: usize,
+    ) -> Result<HashMap<PartyID, HashMap<Vec<PartyID>, T::Share>>, Error> {
+        let subsets: Vec<Vec<PartyID>> = ArithRepSharing::all_subsets(k, n, None);
         let Some((last, rest)) = subsets.split_last() else {
             return Err(Error::String("No k - 1 subsets".to_string()));
         };
@@ -77,10 +65,10 @@ impl<T: Sharing> ReplicatedSharing<T> {
         }
         a_map.insert(last, T::sub(secret, a_sum));
 
-        let mut shares: HashMap<PartyID, ReplicatedShares<T>> =
-            (1..self.n + 1).map(|i| (i, HashMap::new())).collect();
+        let mut shares: HashMap<PartyID, HashMap<Vec<PartyID>, T::Share>> =
+            (1..n + 1).map(|i| (i, HashMap::new())).collect();
         for (subset, a) in a_map {
-            let not_in = (1..self.n + 1).filter(|x| !subset.contains(x));
+            let not_in = (1..n + 1).filter(|x| !subset.contains(x));
             for i in not_in {
                 shares.entry(i).or_default().insert(subset.clone(), a);
             }
@@ -88,10 +76,14 @@ impl<T: Sharing> ReplicatedSharing<T> {
         Ok(shares)
     }
 
-    /// Given [`k`][`Self::k`] shares, returns a reconstructed secret
-    pub fn reconstruct(&self, shares: &HashMap<PartyID, ReplicatedShares<T>>) -> T::Share {
-        assert!(shares.len() == self.k);
-        let subsets: Vec<Vec<PartyID>> = (1..self.n + 1).combinations(self.k - 1).collect();
+    /// Given at least `k` shares, returns a reconstructed secret
+    pub fn reconstruct(
+        shares: &HashMap<PartyID, HashMap<Vec<PartyID>, T::Share>>,
+        k: usize,
+        n: usize,
+    ) -> T::Share {
+        assert!(shares.len() >= k);
+        let subsets: Vec<Vec<PartyID>> = ArithRepSharing::all_subsets(k, n, None);
         let mut reconstructed_s = T::zero();
         for subset in subsets {
             for (j, share_j) in shares {
@@ -103,5 +95,45 @@ impl<T: Sharing> ReplicatedSharing<T> {
             }
         }
         reconstructed_s
+    }
+
+    /// Returns all replicated secret sharing subsets of a k-of-n scheme
+    pub fn all_subsets(k: usize, n: usize, id: Option<PartyID>) -> Vec<Vec<PartyID>> {
+        let all_subsets = (1..n + 1).combinations(k - 1).collect();
+        let Some(id) = id else { return all_subsets };
+        all_subsets
+            .into_iter()
+            .filter(|x| !x.contains(&id))
+            .collect()
+    }
+}
+
+pub struct AdditiveSharing<T: Sharing> {
+    _sharing: PhantomData<T>,
+}
+
+impl<T: Sharing> AdditiveSharing<T> {
+    /// Returns `n` shares from a given secret
+    pub fn share<R: TryCryptoRng>(
+        rng: &mut R,
+        secret: T::Share,
+        n: usize,
+    ) -> Result<Vec<T::Share>, R::Error> {
+        let mut a: Vec<T::Share> = (0..n - 1)
+            .map(|_| T::random_share(rng))
+            .collect::<Result<Vec<T::Share>, R::Error>>()?;
+        let sum = T::sum(&a);
+        let a_n = T::sub(secret, sum);
+        a.push(a_n);
+        Ok(a)
+    }
+
+    /// Given at least `k` shares, returns a reconstructed secret
+    pub fn reconstruct(
+        shares: &[T::Share],
+        n: usize,
+    ) -> T::Share {
+        assert!(shares.len() == n);
+        T::sum(shares)
     }
 }

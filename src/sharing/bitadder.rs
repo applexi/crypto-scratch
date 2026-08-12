@@ -9,6 +9,7 @@ pub fn full(a: &BitShare, b: &BitShare, c_in: &BitShare) -> (BitShare, BitShare)
     (s, c_out)
 }
 
+/// Returns the final carry bit of the sum of `a` and `b` via the full adder
 pub fn full_adder(a: &Vec<BitShare>, b: &Vec<BitShare>) -> bool {
     assert!(a.len() == b.len());
     let mut c = false;
@@ -18,7 +19,10 @@ pub fn full_adder(a: &Vec<BitShare>, b: &Vec<BitShare>) -> bool {
     c
 }
 
-/// returns (g: generation, p: propagation)
+/// Returns (g: generation, p: propagation)
+/// 
+/// Generation = at this index, a carry is guaranteed
+/// Propagation = at this index, a carry is guaranteed if and only if a prior carry is passed through
 fn parallel_recurse(a: &Vec<BitShare>, b: &Vec<BitShare>, l: usize, r:usize) -> (bool, bool) {
     if r - l == 1 {
         return (a[l] & b[l], a[l] ^ b[l])
@@ -26,10 +30,12 @@ fn parallel_recurse(a: &Vec<BitShare>, b: &Vec<BitShare>, l: usize, r:usize) -> 
     let mid = l + (r - l) / 2;
     let ((gl, pl), (gr, pr)) = (parallel_recurse(a, b, l, mid), parallel_recurse(a, b, mid, r));
     let p = pl & pr;
-    let g = gr | (pr & gl);
+    // Since pr and gr can never both be true, the 'or' can be replaced with 'xor'
+    let g = gr ^ (pr & gl);
     (g, p)
 }
 
+/// Returns the final carry bit of the sum of `a` and `b` via the parallel prefix adder
 pub fn parallel_prefix(a: &Vec<BitShare>, b: &Vec<BitShare>) -> bool {
     assert!(a.len() == b.len());
     let (g, _) = parallel_recurse(a, b, 0, a.len());

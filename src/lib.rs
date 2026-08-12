@@ -7,5 +7,5 @@ pub const DEFAULT_N: usize = 3;
 pub const DEFAULT_K: usize = 2;
 
 pub use sharing::{
-    ArithShare, ArithmeticShares, ArithmeticSharing, BinarySharing, BitShare, BinaryShares, PartyID,
+    ArithShare, ArithRepSharing, BitRepSharing, BitShare, PartyID, n_choose_k,
 };
