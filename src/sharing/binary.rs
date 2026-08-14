@@ -34,4 +34,7 @@ impl Sharing for Binary {
     fn sub(a: Self::Share, b: Self::Share) -> Self::Share {
         a ^ b
     }
+    fn mul(a: Self::Share, b: Self::Share) -> Self::Share {
+        a & b
+    }
 }

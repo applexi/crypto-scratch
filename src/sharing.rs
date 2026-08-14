@@ -10,6 +10,7 @@ mod helper;
 pub use arithmetic::{ArithShare, Arithmetic};
 pub use binary::{Binary, BitShare};
 pub use helper::n_choose_k;
+pub use bitadder::{BitOps, BitAdder, full_adder, parallel_prefix};
 
 use crate::error::Error;
 
@@ -32,6 +33,7 @@ pub trait Sharing {
     fn add(a: Self::Share, b: Self::Share) -> Self::Share;
     /// a - b
     fn sub(a: Self::Share, b: Self::Share) -> Self::Share;
+    fn mul(a: Self::Share, b: Self::Share) -> Self::Share;
 
     fn sum(shares: &[Self::Share]) -> Self::Share {
         shares

@@ -29,4 +29,7 @@ impl Sharing for Arithmetic {
     fn sub(a: Self::Share, b: Self::Share) -> Self::Share {
         a.wrapping_sub(b)
     }
+    fn mul(a: Self::Share, b: Self::Share) -> Self::Share {
+        a.wrapping_mul(b)
+    }
 }

@@ -1,6 +1,4 @@
-use std::iter::zip;
-
-use crate::sharing::bitadder::{full, full_adder, parallel_prefix};
+use crate::sharing::bitadder::{full_adder, parallel_prefix};
 
 use super::*;
 use rand::rngs::SysRng;
@@ -63,33 +61,39 @@ fn to_from_arith_binary_test() -> Result<(), Error> {
     Ok(())
 }
 
+pub struct NonMPC;
+
+impl BitOps for NonMPC {
+    type Bit = bool;
+    fn and(&mut self, a: &Self::Bit, b: &Self::Bit) -> Result<Self::Bit, Error> {
+        Ok(a & b)
+    }
+    fn xor(&mut self, a: &Self::Bit, b: &Self::Bit) -> Result<Self::Bit, Error> {
+        Ok(a ^ b)
+    }
+    fn zero(&mut self) -> Result<Self::Bit, Error> {
+        Ok(false)
+    }
+}
+
 #[test]
 fn bit_adder_test() -> Result<(), Error> {
     let mut rng = SysRng;
 
     let a = Arithmetic::random_share(&mut rng).expect("Could not generate random arithmetic share");
     let b = Arithmetic::random_share(&mut rng).expect("Could not generate random arithmetic share");
-    let c_out = u32::from(a) + u32::from(b) > u32::from(u16::MAX);
     let c = Arithmetic::add(a, b);
 
     let a = Arithmetic::to_binary(a);
     let b = Arithmetic::to_binary(b);
     let c = Arithmetic::to_binary(c);
 
-    let mut c_in = false;
-    let mut s = Vec::new();
-    for (a_bit, b_bit) in zip(&a, &b) {
-        let (s_bit, c_bit) = full(a_bit, b_bit, &c_in);
-        s.push(s_bit);
-        c_in = c_bit;
-    }
+    let mut non_mpc = NonMPC;
+    let added_c = full_adder(&mut non_mpc, &a, &b)?;
+    assert!(c == added_c);
 
-    assert!(c == s && c_in == c_out);
-    let c_in = full_adder(&a, &b);
-    assert!(c_in == c_out);
-
-    let x = parallel_prefix(&a, &b);
-    assert!(c_out == x);
+    let added_c = parallel_prefix(&mut non_mpc, &a, &b)?;
+    assert!(c == added_c);
     Ok(())
 }
 
