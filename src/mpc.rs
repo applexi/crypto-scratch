@@ -313,6 +313,7 @@ impl MPC {
         Ok(bit_sharings)
     }
 
+    /// Opens the MSB of an variable `name_a` using a given bit adder function
     pub fn get_msb(&mut self, name: &String, bit_adder: BitAdder<Self>) -> Result<bool, Error> {
         if self.n - 2 * (self.k - 1) != 1 {
             return Err(Error::String("The following must hold true as this function uses mpc mult: n - 2(k - 1) == 1".to_string()));
