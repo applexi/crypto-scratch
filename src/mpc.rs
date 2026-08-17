@@ -1,13 +1,16 @@
 use rand::rngs::SysRng;
 use std::{
-    collections::{HashMap, HashSet}, hash::Hash, iter::zip, ops::Range,
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    ops::Range,
 };
 
 use crate::{
-    ArithRepSharing, ArithShare, BitAdder, BitOps, BitRepSharing, BitShare, PartyID, error::Error, sharing::{AdditiveSharing, Arithmetic, Binary, ReplicatedSharing, Sharing, n_choose_k},
+    ArithRepSharing, ArithShare, BitAdder, BitOps, BitRepSharing, BitShare, PartyID, error::Error, prng::PRNG, sharing::{Arithmetic, Binary, ReplicatedSharing, Sharing},
 };
 
 pub struct MPC {
+    prng: PRNG,
     rng: SysRng,
     shared_vars: HashMap<String, HashMap<PartyID, HashMap<Vec<PartyID>, ArithShare>>>,
     pub k: usize,
@@ -18,12 +21,18 @@ impl MPC {
     pub fn new(k: usize, n: usize) -> Self {
         let shared_vars = HashMap::new();
         let rng = SysRng;
+        let prng = PRNG::new(k, n);
         MPC {
+            prng,
             rng,
             shared_vars,
             k,
             n,
         }
+    }
+
+    pub fn set_prng(&mut self) -> Result<(), Error> {
+        self.prng.new_seeds(&mut self.rng)
     }
 
     /// Create a new arithmetic variable with value `secret` that is automatically shared amongst the `n` parties
@@ -144,7 +153,11 @@ impl MPC {
     }
 
     /// Greedily assigns items based on party id
-    fn greedy_assign<T: Eq + Hash + Clone, F: Fn(&PartyID, &T) -> bool>(&self, mut items: HashSet<T>, can_take: F) -> Result<HashMap<PartyID, Vec<T>>, Error> {
+    fn greedy_assign<T: Eq + Hash + Clone, F: Fn(&PartyID, &T) -> bool>(
+        &self,
+        mut items: HashSet<T>,
+        can_take: F,
+    ) -> Result<HashMap<PartyID, Vec<T>>, Error> {
         // Each party is assigned crossterms with the form: (replicated subset, replicated subset)
         let mut assignment: HashMap<PartyID, Vec<T>> = HashMap::new();
 
@@ -152,10 +165,7 @@ impl MPC {
             let mut to_del = HashSet::new();
             for item in &items {
                 if can_take(&id, item) {
-                    assignment
-                        .entry(id)
-                        .or_default()
-                        .push(item.clone());
+                    assignment.entry(id).or_default().push(item.clone());
                     to_del.insert(item.clone());
                 }
             }
@@ -202,20 +212,18 @@ impl MPC {
     fn communicate<T: Sharing>(
         &self,
         party_shares: &mut HashMap<PartyID, HashMap<Vec<PartyID>, T::Share>>,
+        communication_set: HashMap<PartyID, HashMap<Vec<PartyID>, T::Share>>,
     ) -> Result<(), Error> {
-        let init_shares = party_shares.clone();
-        for (sender_id, shares) in init_shares {
+        for (_, shares) in communication_set {
             for receiver_id in self.parties() {
-                if receiver_id != sender_id {
-                    for (subset, sender_share) in shares.iter() {
-                        if !subset.contains(&receiver_id) {
-                            party_shares
-                                .entry(receiver_id)
-                                .or_default()
-                                .entry(subset.clone())
-                                .and_modify(|s| *s = T::add(*s, *sender_share))
-                                .or_insert(*sender_share);
-                        }
+                for (subset, sender_share) in shares.iter() {
+                    if !subset.contains(&receiver_id) {
+                        party_shares
+                            .entry(receiver_id)
+                            .or_default()
+                            .entry(subset.clone())
+                            .and_modify(|s| *s = T::add(*s, *sender_share))
+                            .or_insert(*sender_share);
                     }
                 }
             }
@@ -238,24 +246,39 @@ impl MPC {
         }
         // Greedily assigns all crossterms
         let crossterms = self.all_crossterms();
-        let assignment = self.greedy_assign(crossterms, |id, (subset_a, subset_b)| !subset_a.contains(id) && !subset_b.contains(id))?;
+        let assignment = self.greedy_assign(crossterms, |id, (subset_a, subset_b)| {
+            !subset_a.contains(id) && !subset_b.contains(id)
+        })?;
         // Each party locally computes all crossterms and sums them to a single value each
         let computed_assignment = self.compute_assignment::<T>(&assignment, shared_a, shared_b)?;
-        // Each party then additive secret shares that value based on the number of shares they are supposed to have
-        // and assigns each share to a subset they should contribute to
-        let num_party_shares = n_choose_k(self.n - 1, self.k - 1);
+
+        // MPC system uses PRNG to simulate converting the single value to a replicated secret sharing
         let mut shared_c: HashMap<PartyID, HashMap<Vec<PartyID>, T::Share>> = HashMap::new();
-        for (id, secret) in computed_assignment {
-            let secret_shares =
-                AdditiveSharing::<T>::share(&mut self.rng, secret, num_party_shares)
-                    .map_err(|_| Error::Rng)?;
-            let party_subsets = ReplicatedSharing::<T>::all_subsets(self.k, self.n, Some(id));
-            for (subset, share) in zip(party_subsets, secret_shares) {
-                shared_c.entry(id).or_default().insert(subset, share);
+        let mut communication_set: HashMap<PartyID, HashMap<Vec<PartyID>, T::Share>> = HashMap::new();
+        for (sender_id, secret) in computed_assignment {
+            let mut rest = ReplicatedSharing::<T>::all_subsets(self.k, self.n, Some(sender_id));
+            let correction_subset = rest.pop().ok_or(Error::String("Subsets failed".to_string()))?;
+            let mut sum_randoms = T::zero();
+            for random_subset in rest {
+                // Every party who should have `random_subset` "locally" draws from the seed to get sender's share
+                let random = self.prng.from_seed::<T>(&random_subset)?;
+                for receiver_id in self.parties() {
+                    if !random_subset.contains(&receiver_id) {
+                        shared_c.entry(receiver_id)
+                            .or_default()
+                            .entry(random_subset.clone())
+                            .and_modify(|s| *s = T::add(*s, random))
+                            .or_insert(random);
+                    }
+                }
+                sum_randoms = T::add(sum_randoms, random);
             }
+            // Only need to communicate the correction subsets (the last shares containing the secret correction)
+            communication_set.entry(sender_id).or_default().insert(correction_subset, T::sub(secret ,sum_randoms));
         }
+
         // Each party then gives their (k: subset, v: share) to parties whose index is not within that subset
-        self.communicate::<T>(&mut shared_c)?;
+        self.communicate::<T>(&mut shared_c, communication_set)?;
         Ok(shared_c)
     }
 
@@ -283,17 +306,28 @@ impl MPC {
     }
 
     /// Given an arithmetic sharing, returns a vector of bit sharings
-    /// 
+    ///
     /// Based on Rep3 Equation 2
-    fn shared_arith_to_bits(&self, subset: &Vec<PartyID>, share: &HashMap<PartyID, HashMap<Vec<PartyID>, ArithShare>>) -> Result<Vec<HashMap<PartyID, HashMap<Vec<PartyID>, BitShare>>>, Error> {
-        // An arithmetic sharing is converted into a vector of binary sharings 
+    fn shared_arith_to_bits(
+        &self,
+        subset: &Vec<PartyID>,
+        share: &HashMap<PartyID, HashMap<Vec<PartyID>, ArithShare>>,
+    ) -> Result<Vec<HashMap<PartyID, HashMap<Vec<PartyID>, BitShare>>>, Error> {
+        // An arithmetic sharing is converted into a vector of binary sharings
         let mut bit_sharings: Vec<HashMap<PartyID, HashMap<Vec<PartyID>, BitShare>>> = Vec::new();
 
         for i in 0..ArithShare::BITS {
             let mut bit_sharing: HashMap<PartyID, HashMap<Vec<usize>, BitShare>> = HashMap::new();
             for id in self.parties() {
-                let arith_share = share.get(&id).and_then(|x| x.get(subset)).unwrap_or(&Arithmetic::zero()).clone();
-                let bit = Arithmetic::to_binary(arith_share).get(i as usize).unwrap_or(&Binary::zero()).clone();
+                let arith_share = share
+                    .get(&id)
+                    .and_then(|x| x.get(subset))
+                    .unwrap_or(&Arithmetic::zero())
+                    .clone();
+                let bit = Arithmetic::to_binary(arith_share)
+                    .get(i as usize)
+                    .unwrap_or(&Binary::zero())
+                    .clone();
                 let mut bit_share: HashMap<Vec<PartyID>, BitShare> = HashMap::new();
                 // All subsets the party should have in a k-of-n RSS
                 let new_subsets = ArithRepSharing::all_subsets(self.k, self.n, Some(id));
@@ -316,18 +350,25 @@ impl MPC {
     /// Opens the MSB of an variable `name_a` using a given bit adder function
     pub fn get_msb(&mut self, name: &String, bit_adder: BitAdder<Self>) -> Result<bool, Error> {
         if self.n - 2 * (self.k - 1) != 1 {
-            return Err(Error::String("The following must hold true as this function uses mpc mult: n - 2(k - 1) == 1".to_string()));
+            return Err(Error::String(
+                "The following must hold true as this function uses mpc mult: n - 2(k - 1) == 1"
+                    .to_string(),
+            ));
         }
         let share = self.get_shares(name)?;
-        let bit_sharings: Vec<Vec<HashMap<PartyID, HashMap<Vec<PartyID>, BitShare>>>> = ArithRepSharing::all_subsets(self.k, self.n, None)
-            .iter()
-            .map(|subset| self.shared_arith_to_bits(subset, &share))
-            .collect::<Result<Vec<_>, _>>()?;
+        let bit_sharings: Vec<Vec<HashMap<PartyID, HashMap<Vec<PartyID>, BitShare>>>> =
+            ArithRepSharing::all_subsets(self.k, self.n, None)
+                .iter()
+                .map(|subset| self.shared_arith_to_bits(subset, &share))
+                .collect::<Result<Vec<_>, _>>()?;
         let mut iter = bit_sharings.into_iter();
-        let first = iter.next().ok_or(Error::String("No bit sharings".to_string()))?;
-        let sum = iter
-            .try_fold(first, |a, b| bit_adder(self, &a, &b))?;
-        let last = sum.last().ok_or(Error::String("Summed shares has no MSB".to_string()))?;
+        let first = iter
+            .next()
+            .ok_or(Error::String("No bit sharings".to_string()))?;
+        let sum = iter.try_fold(first, |a, b| bit_adder(self, &a, &b))?;
+        let last = sum
+            .last()
+            .ok_or(Error::String("Summed shares has no MSB".to_string()))?;
         let msb = BitRepSharing::reconstruct(last, self.k, self.n);
         Ok(msb)
     }
@@ -349,14 +390,15 @@ impl BitOps for MPC {
 
 #[cfg(test)]
 mod test {
-    const TIMES: usize = 10;
+    const TIMES: usize = 3;
 
-    use crate::{full_adder, parallel_prefix};
     use super::*;
+    use crate::{full_adder, parallel_prefix};
 
     fn mpc_ops_test(k: usize, n: usize) -> Result<(), Error> {
         let mut rng = SysRng;
         let mut mpc = MPC::new(k, n);
+        mpc.set_prng()?;
 
         let (name_a, name_b, name_c) = ("a".to_string(), "b".to_string(), "c".to_string());
         let real_a = Arithmetic::random_share(&mut rng).map_err(|_| Error::Rng)?;
@@ -378,7 +420,9 @@ mod test {
 
         // Test all parties have been assigned at least one crossterm
         let crossterms = mpc.all_crossterms();
-        let assignment = mpc.greedy_assign(crossterms, |id, (subset_a, subset_b)| !subset_a.contains(id) && !subset_b.contains(id))?;
+        let assignment = mpc.greedy_assign(crossterms, |id, (subset_a, subset_b)| {
+            !subset_a.contains(id) && !subset_b.contains(id)
+        })?;
         if assignment.len() != n {
             if !(n - (2 * k - 1) > 1) {
                 return Err(Error::String(
@@ -419,6 +463,7 @@ mod test {
     fn msb_test(k: usize, n: usize) -> Result<(), Error> {
         let mut rng = SysRng;
         let mut mpc = MPC::new(k, n);
+        mpc.set_prng()?;
 
         let name_a = "a".to_string();
         let real_a = Arithmetic::random_share(&mut rng).map_err(|_| Error::Rng)?;

@@ -100,6 +100,8 @@ impl<T: Sharing> ReplicatedSharing<T> {
     }
 
     /// Returns all replicated secret sharing subsets of a k-of-n scheme
+    /// 
+    /// If `id` is `Some(Party ID)`, returns all subsets of a k-of-n scheme that party should have
     pub fn all_subsets(k: usize, n: usize, id: Option<PartyID>) -> Vec<Vec<PartyID>> {
         let all_subsets = (1..n + 1).combinations(k - 1).collect();
         let Some(id) = id else { return all_subsets };
