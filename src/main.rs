@@ -22,7 +22,7 @@ fn main() -> Result<(), Error>{
     // Add [a] and [b] to create [c] 
     let name_c = "c".to_string();
     mpc.add(&name_a, &name_b, &name_c)?;
-    let sharing_c = mpc.open_var(&name_c)?; // Open sharing c to confirm its value is correct
+    let sharing_c = mpc.open_var(&name_c)?; 
     println!("Sharing c: {sharing_c}, Actual c: {:?}", a.wrapping_add(b));
 
     // Multiply [a] and [b] to create [d]
