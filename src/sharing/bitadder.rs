@@ -1,6 +1,6 @@
 //! This module implements full and parallel prefix bit adders for any struct with trait `BitOps`
 //!
-//! Note that these bit adders are meant to return a sum of two bits, meaning some `and` operation optimizations for MSB extraction have not been implemented
+//! Note that these bit adders are meant to return a sum of two `Vec<bit>`, meaning some `and` operation optimizations for MSB extraction have not been implemented
 
 use std::iter::zip;
 
