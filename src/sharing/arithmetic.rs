@@ -1,3 +1,5 @@
+//! This module defines an Arithmetic (u16) secret sharing mode
+
 use super::*;
 
 pub type ArithShare = u16;

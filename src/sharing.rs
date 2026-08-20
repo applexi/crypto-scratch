@@ -1,5 +1,10 @@
-use std::{collections::HashMap, fmt::Debug, marker::PhantomData};
+//! This module defines a valid secret sharing mode, and with that, replicated and additive secret sharing schemes
+//! 
+//! Currently, the valid secret sharing modes are:
+//! - Arithmetic (u16)
+//! - Binary (bool)
 
+use std::{collections::HashMap, fmt::Debug, marker::PhantomData};
 use itertools::Itertools;
 use rand::TryCryptoRng;
 

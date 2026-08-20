@@ -1,3 +1,5 @@
+//! This module defines a Binary (bool) secret sharing mode
+
 use super::*;
 
 pub type BitShare = bool;

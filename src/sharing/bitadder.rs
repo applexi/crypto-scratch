@@ -1,6 +1,10 @@
+//! This module implements full and parallel prefix bit adders for any struct with trait `BitOps`
+//!
+//! Note that these bit adders are meant to return a sum of two bits, meaning some `and` operation optimizations for MSB extraction have not been implemented
+
 use std::iter::zip;
 
-use crate::{error::Error};
+use crate::error::Error;
 
 pub trait BitOps {
     type Bit: Clone;
@@ -10,9 +14,18 @@ pub trait BitOps {
     fn zero(&mut self) -> Result<Self::Bit, Error>;
 }
 
-pub type BitAdder<T> = fn(ops: &mut T, a: &Vec<<T as BitOps>::Bit>, b: &Vec<<T as BitOps>::Bit>) -> Result<Vec<<T as BitOps>::Bit>, Error>;
+pub type BitAdder<T> = fn(
+    ops: &mut T,
+    a: &Vec<<T as BitOps>::Bit>,
+    b: &Vec<<T as BitOps>::Bit>,
+) -> Result<Vec<<T as BitOps>::Bit>, Error>;
 
-pub fn full<T: BitOps>(ops: &mut T, a: &T::Bit, b: &T::Bit, c_in: &T::Bit) -> Result<(T::Bit, T::Bit), Error> {
+pub fn full<T: BitOps>(
+    ops: &mut T,
+    a: &T::Bit,
+    b: &T::Bit,
+    c_in: &T::Bit,
+) -> Result<(T::Bit, T::Bit), Error> {
     let t = ops.xor(a, b)?;
     let s = ops.xor(&t, c_in)?;
     // a ^ (t & (c_in ^ a))
@@ -23,7 +36,11 @@ pub fn full<T: BitOps>(ops: &mut T, a: &T::Bit, b: &T::Bit, c_in: &T::Bit) -> Re
 }
 
 /// Returns the sum of `a` and `b` via full adder
-pub fn full_adder<T: BitOps>(ops: &mut T, a: &Vec<T::Bit>, b: &Vec<T::Bit>) -> Result<Vec<T::Bit>, Error> {
+pub fn full_adder<T: BitOps>(
+    ops: &mut T,
+    a: &Vec<T::Bit>,
+    b: &Vec<T::Bit>,
+) -> Result<Vec<T::Bit>, Error> {
     assert!(a.len() == b.len());
     let mut sum = Vec::new();
     let mut c = ops.zero()?;
@@ -38,19 +55,29 @@ pub fn full_adder<T: BitOps>(ops: &mut T, a: &Vec<T::Bit>, b: &Vec<T::Bit>) -> R
 struct PRNode<T: BitOps> {
     value: (T::Bit, T::Bit),
     left: Option<Box<PRNode<T>>>,
-    right: Option<Box<PRNode<T>>>
+    right: Option<Box<PRNode<T>>>,
 }
 
 impl<T: BitOps> PRNode<T> {
     pub fn new(g: &T::Bit, p: &T::Bit) -> Self {
-        PRNode { value: (g.clone(), p.clone()), left: None, right: None }
+        PRNode {
+            value: (g.clone(), p.clone()),
+            left: None,
+            right: None,
+        }
     }
 
     /// In-order traversal, pass left (LSB...) carries into right (...MSB) subtrees
     /// - Optimized number of `ands` via `c_in_zero`
-    /// 
+    ///
     /// Returns `Vec<T::Bit>` through `sum`
-    pub fn sum(&mut self, ops: &mut T, c_in: &T::Bit, sum: &mut Vec<T::Bit>, c_in_zero: bool) -> Result<(), Error> {
+    pub fn sum(
+        &mut self,
+        ops: &mut T,
+        c_in: &T::Bit,
+        sum: &mut Vec<T::Bit>,
+        c_in_zero: bool,
+    ) -> Result<(), Error> {
         if self.left.is_none() && self.right.is_none() {
             let (_, p) = &self.value;
             // s (sum) = a xor b xor c_in = p xor c_in
@@ -58,9 +85,16 @@ impl<T: BitOps> PRNode<T> {
             sum.push(s);
             return Ok(());
         }
-        let left = self.left.as_mut().ok_or(Error::String("PRNode recurse error".to_string()))?;
-        let right = self.right.as_mut().ok_or(Error::String("PRNode recurse error".to_string()))?;
-        // All leftmost nodes at every level (ie all ranges starting from index 0) have a carry_in of 0
+        let left = self
+            .left
+            .as_mut()
+            .ok_or(Error::String("PRNode recurse error".to_string()))?;
+        let right = self
+            .right
+            .as_mut()
+            .ok_or(Error::String("PRNode recurse error".to_string()))?;
+        // All leftmost nodes at every level (ie all ranges starting from index 0) have a carryof 0
+        // By our definition of propagate, if carry is 0, propagate is immediately 0
         left.sum(ops, c_in, sum, c_in_zero)?;
         let (g, p) = left.value.clone();
         let c_out = if c_in_zero {
@@ -76,27 +110,45 @@ impl<T: BitOps> PRNode<T> {
 
 /// Returns (g: generation, p: propagation)
 /// - Optimized number of `ands` via `need_p`
-/// 
+///
 /// Generation = at this index, a carry is guaranteed
 /// Propagation = at this index, a carry is guaranteed if and only if a prior carry is passed through
-fn parallel_recurse<T: BitOps>(ops: &mut T, a: &Vec<T::Bit>, b: &Vec<T::Bit>, l: usize, r:usize, node: &mut PRNode<T>, need_p: bool) -> Result<(T::Bit, T::Bit), Error> {
+fn parallel_recurse<T: BitOps>(
+    ops: &mut T,
+    a: &Vec<T::Bit>,
+    b: &Vec<T::Bit>,
+    l: usize,
+    r: usize,
+    node: &mut PRNode<T>,
+    need_p: bool,
+) -> Result<(T::Bit, T::Bit), Error> {
     if r - l == 1 {
         let g = ops.and(&a[l], &b[l])?;
         let p = ops.xor(&a[l], &b[l])?;
         node.value = (g.clone(), p.clone());
         node.left = None;
         node.right = None;
-        return Ok((g, p))
+        return Ok((g, p));
     }
     let zero = ops.zero()?;
-    node.left = Some(Box::new(PRNode::new(&zero ,&zero)));
-    node.right = Some(Box::new(PRNode::new(&zero ,&zero)));
+    node.left = Some(Box::new(PRNode::new(&zero, &zero)));
+    node.right = Some(Box::new(PRNode::new(&zero, &zero)));
     let mid = l + (r - l) / 2;
-    let left = node.left.as_mut().ok_or(Error::String("Parallel recurse error".to_string()))?;
-    let right = node.right.as_mut().ok_or(Error::String("Parallel recurse error".to_string()))?;
+    let left = node
+        .left
+        .as_mut()
+        .ok_or(Error::String("Parallel recurse error".to_string()))?;
+    let right = node
+        .right
+        .as_mut()
+        .ok_or(Error::String("Parallel recurse error".to_string()))?;
     // All leftmost nodes at every level (ie all ranges starting from index 0) do not care about propagate
-    let (Ok((gl, pl)), Ok((gr, pr))) = (parallel_recurse(ops, a, b, l, mid, left, need_p), parallel_recurse(ops, a, b, mid, r, right, true)) else {
-        return Err(Error::String("Error within parallel recurse".to_string()))
+    // This is because no carries can possibly enter ranges starting from 0
+    let (Ok((gl, pl)), Ok((gr, pr))) = (
+        parallel_recurse(ops, a, b, l, mid, left, need_p),
+        parallel_recurse(ops, a, b, mid, r, right, true),
+    ) else {
+        return Err(Error::String("Error within parallel recurse".to_string()));
     };
     let p = if need_p {
         ops.and(&pl, &pr)?
@@ -111,10 +163,14 @@ fn parallel_recurse<T: BitOps>(ops: &mut T, a: &Vec<T::Bit>, b: &Vec<T::Bit>, l:
 }
 
 /// Returns the sum of `a` and `b` via parallel-prefix adder
-pub fn parallel_prefix<T: BitOps>(ops: &mut T, a: &Vec<T::Bit>, b: &Vec<T::Bit>) -> Result<Vec<T::Bit>, Error> {
+pub fn parallel_prefix<T: BitOps>(
+    ops: &mut T,
+    a: &Vec<T::Bit>,
+    b: &Vec<T::Bit>,
+) -> Result<Vec<T::Bit>, Error> {
     assert!(a.len() == b.len());
     let zero = ops.zero()?;
-    let mut root = PRNode::new(&zero ,&zero);
+    let mut root = PRNode::new(&zero, &zero);
     parallel_recurse(ops, a, b, 0, a.len(), &mut root, false)?;
     let mut sum = Vec::new();
     root.sum(ops, &zero, &mut sum, true)?;

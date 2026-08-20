@@ -1,5 +1,6 @@
-use std::{collections::HashMap};
+//! This module contains a mock PRNG and assumes seeds are known to respective parties beforehand
 
+use std::{collections::HashMap};
 use rand::{TryCryptoRng, rngs::ChaCha20Rng, rand_core::SeedableRng};
 
 use crate::{ArithRepSharing, PartyID, error::Error, sharing::Sharing};
