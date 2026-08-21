@@ -19,7 +19,3 @@ Example in [`src/main.rs`](src/main.rs).
 cargo run   
 cargo test  
 ```
-
-## License
-
-MIT — see [LICENSE](LICENSE).
