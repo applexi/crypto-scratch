@@ -9,7 +9,7 @@ The MPC system includes:
 - Full and parallel prefix binary adders (for MSB extraction), optimized for reduced AND operations
 
 > This is a learning project, not a security product. 
-> Code (especially data structure representations) can be further optimized for memory, but has not been done for the sake of learning/understanding.
+> Code (especially data structure representations) can be further optimized, but has not been done for the sake of learning/understanding.
 
 ## Usage
 
