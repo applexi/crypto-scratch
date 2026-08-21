@@ -29,14 +29,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crypto-scratch"
-version = "0.1.0"
-dependencies = [
- "itertools",
- "rand",
-]
-
-[[package]]
 name = "either"
 version = "1.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -61,6 +53,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
+]
+
+[[package]]
+name = "k-of-n-rss-mpc"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "rand",
 ]
 
 [[package]]

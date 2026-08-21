@@ -1,7 +1,8 @@
 [package]
-name = "crypto-scratch"
+name = "k-of-n-rss-mpc"
 version = "0.1.0"
 edition = "2024"
+license = "MIT"
 
 [dependencies]
 itertools = "0.15.0"

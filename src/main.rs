@@ -1,4 +1,4 @@
-use crypto_scratch::{error::Error, full_adder, mpc::MPC, parallel_prefix, sharing::Arithmetic};
+use k_of_n_rss_mpc::{error::Error, full_adder, mpc::MPC, parallel_prefix, sharing::Arithmetic};
 use rand::{TryRng, rngs::SysRng};
 
 /// Feel free to edit to test
