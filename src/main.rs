@@ -31,7 +31,7 @@ fn main() -> Result<(), Error>{
     let sharing_d = mpc.open_var(&name_d)?;
     println!("Sharing d: {sharing_d}, Actual d: {:?}", a.wrapping_mul(b));
 
-    // Get and open the msb of [a] via a full adder
+    // Get and open the msb of [a] via a full adder and a parallel prefix adder
     let msb_a_full = mpc.get_msb(&name_a, full_adder)?;
     let msb_a_ppa = mpc.get_msb(&name_a, parallel_prefix)?;
     let Some(msb_a) = Arithmetic::to_binary(a).last().cloned() else {
